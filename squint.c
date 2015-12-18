@@ -144,7 +144,7 @@ split(Ps *f, Ps *s[2], Chan *splitclose)
 		argv[i][1] = s[i];
 		argv[i][2] = q;
 		argv[i][3] = splitclose;
-		threadcreate(_split, argv[i], STK);
+		taskcreate(_split, argv[i], STK);
 		if(debug) threadcount++;
 		taskyield();
 	}
@@ -196,7 +196,7 @@ mkconst(Rat c)
 	o = psmk(0);
 	argv[0] = &c;
 	argv[1] = o;
-	threadcreate(_mkconst, argv, STK);
+	taskcreate(_mkconst, argv, STK);
 	if(debug) threadcount++;
 	taskyield();
 	return o;
@@ -211,7 +211,7 @@ binop(void (*oper)(void*), Ps *f, Ps *g)
 	argv[0] = f;
 	argv[1] = g;
 	argv[2] = o;
-	threadcreate(oper, argv, STK);
+	taskcreate(oper, argv, STK);
 	if(debug) threadcount++;
 	taskyield();
 	return o;
@@ -313,7 +313,7 @@ psderiv(Ps *f)
 
 	argv[0] = f;
 	argv[1] = d;
-	threadcreate(_psderiv, argv, STK);
+	taskcreate(_psderiv, argv, STK);
 	if(debug) threadcount++;
 	taskyield();
 	return d;
@@ -326,7 +326,7 @@ psprint(Ps *ps, int n)
 
 	for(i = 0; i < n - 1; i++){
 		ratprint(getr(ps));
-		printf(", ");
+		printf(" ");
 	}
 	ratprint(getr(ps));
 	printf("\n");
@@ -392,7 +392,7 @@ psinteg(Ps *ps, Rat c)
 	argv[0] = ps;
 	argv[1] = &c;
 	argv[2] = i;
-	threadcreate(_psinteg, argv, STK);
+	taskcreate(_psinteg, argv, STK);
 	if(debug) threadcount++;
 	taskyield();
 	return i;
@@ -447,7 +447,7 @@ pscmul(Rat c, Ps* f)
 	argv[0] = f;
 	argv[1] = &c;
 	argv[2] = o;
-	threadcreate(_pscmul, argv, STK);
+	taskcreate(_pscmul, argv, STK);
 	if(debug) threadcount++;
 	taskyield();
 	return o;
@@ -585,7 +585,7 @@ psrecip(Ps *f)
 	argv[1] = r;
 	argv[2] = rr[0];
 	argv[3] = close;
-	threadcreate(_psrecip, argv, STK);
+	taskcreate(_psrecip, argv, STK);
 	if(debug) threadcount++;
 	taskyield();
 	return rr[1];
@@ -657,7 +657,7 @@ psmsubst(Ps *f, Rat c, int deg)
 	argv[1] = &c;
 	argv[2] = &deg;
 	argv[3] = m;
-	threadcreate(_psmsubst, argv, STK);
+	taskcreate(_psmsubst, argv, STK);
 	if(debug) threadcount++;
 	taskyield();
 	return m;
@@ -797,7 +797,7 @@ psrev(Ps *f)
 	argv[1] = r;
 	argv[2] = rr[0];
 	argv[3] = close;
-	threadcreate(_psrev, argv, STK);
+	taskcreate(_psrev, argv, STK);
 	if(debug) threadcount++;
 	taskyield();
 	return rr[1];
@@ -811,7 +811,6 @@ threadmain(int argc, char *argv[])
 
 /*	ratfmtinstall();*/
 
-	printf("here");
 	zero = ratmk(0, 1);
 	one = ratmk(1, 1);
 

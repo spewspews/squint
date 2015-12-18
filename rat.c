@@ -98,9 +98,9 @@ int
 ratprint(Rat r)
 {
 	if(r.den == 1)
-		return printf("%lld", r.num);
+		return printf("%ld", r.num);
 	else
-		return printf("%lld/%lld", r.num, r.den);
+		return printf("%ld/%ld", r.num, r.den);
 }
 	
 /*
@@ -111,9 +111,9 @@ Rfmt(Fmt *f)
 
 	r = va_arg(f->args, Rat);
 	if(r.den == 1)
-		return fmtprint(f, "%lld", r.num);
+		return fmtprint(f, "%ld", r.num);
 	else
-		return fmtprint(f, "%lld/%lld", r.num, r.den);
+		return fmtprint(f, "%ld/%ld", r.num, r.den);
 }
 
 void
