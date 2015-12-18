@@ -1,6 +1,6 @@
-#include <u.h>
-#include <libc.h>
-#include <thread.h>
+#include <multitask.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "rat.h"
 #include "fifo.h"
 
@@ -13,12 +13,21 @@ enum
 	STK = 2048
 };
 
+int
+chanclosing(Chan *c)
+{
+	if(atomic_load(&c->closed))
+		return 1;
+	return 0;
+}
+
+
 typedef struct Ps Ps;
 struct Ps
 {
-	Channel *close;
-	Channel *req;
-	Channel	*dat;
+	Chan *close;
+	Chan *req;
+	Chan *dat;
 };
 
 Rat
@@ -26,8 +35,8 @@ getr(Ps *f)
 {
 	Rat	r;
 
-	send(f->req, nil);
-	recv(f->dat, &r);
+	chansend(f->req, NULL);
+	chanrecv(f->dat, &r);
 	return r;
 }
 
@@ -37,9 +46,9 @@ psmk(int nel)
 	Ps	*d;
 
 	d = malloc(sizeof(*d));
-	d->close = chancreate(1, 0);
-	d->req = chancreate(1, 0);
-	d->dat = chancreate(sizeof(Rat), nel);
+	d->close = channew(1, 0);
+	d->req = channew(1, 0);
+	d->dat = channew(sizeof(Rat), nel);
 	return d;
 }
 
@@ -57,7 +66,7 @@ _split(void *a)
 {
 	void	**argv;
 	Ps	*f, *s;
-	Channel	*qchan, *close;
+	Chan	*qchan, *close;
 	Fifo	q;
 	Rat	r;
 	enum{
@@ -75,60 +84,60 @@ _split(void *a)
 	close = argv[3];
 
 	alts[REQ].c = s->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[QCHAN].c = qchan;
 	alts[QCHAN].v = &r;
-	alts[QCHAN].op = CHANRCV;
+	alts[QCHAN].op = CHANRECV;
 	alts[CLOSE].c = s->close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
-	q.front = nil;
+	q.front = NULL;
 	for(;;){
 		switch(alt(alts)){
 		case REQ:
-			if(q.front == nil){
+			if(q.front == NULL){
 				r = getr(f);
-				send(qchan, &r);
-				send(s->dat, &r);
+				chansend(qchan, &r);
+				chansend(s->dat, &r);
 			}else{
 				r = delete(&q);
-				send(s->dat, &r);
+				chansend(s->dat, &r);
 			}
 			break;
 		case QCHAN:
 			insert(&q, r);
 			break;
 		case CLOSE:
-			while(q.front != nil)
+			while(q.front != NULL)
 				delete(&q);
 			psfree(s);
 			if(chanclosing(qchan) == -1){
-				if(close != nil){
-					send(close, nil);
+				if(close != NULL){
+					chansend(close, NULL);
 					chanfree(close);
 				}
 				chanclose(qchan);
 			}else{
 				chanfree(qchan);
-				send(f->close, nil);
+				chansend(f->close, NULL);
 			}
 			if(debug) threadcount--;
-			threadexits(0);
+			taskexit();
 		}
 	}
 }
 
 void
-split(Ps *f, Ps *s[2], Channel *splitclose)
+split(Ps *f, Ps *s[2], Chan *splitclose)
 {
 	void	*argv[2][4];
-	Channel	*q;
+	Chan	*q;
 	int	i;
 
-	q = chancreate(sizeof(Rat), 0);
+	q = channew(sizeof(Rat), 0);
 	for(i = 0; i < 2; i++){
 		s[i] = psmk(0);
 		argv[i][0] = f;
@@ -137,7 +146,7 @@ split(Ps *f, Ps *s[2], Channel *splitclose)
 		argv[i][3] = splitclose;
 		threadcreate(_split, argv[i], STK);
 		if(debug) threadcount++;
-		yield();
+		taskyield();
 	}
 }
 
@@ -159,21 +168,21 @@ _mkconst(void *a)
 	o = argv[1];
 
 	alts[REQ].c = o->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[CLOSE].c = o->close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
 	for(;;){
 		switch(alt(alts)){
 		case REQ:
-			send(o->dat, &c);
+			chansend(o->dat, &c);
 			break;
 		case CLOSE:
 			if(debug) threadcount--;
-			threadexits(0);
+			taskexit();
 		}
 	}
 }
@@ -189,7 +198,7 @@ mkconst(Rat c)
 	argv[1] = o;
 	threadcreate(_mkconst, argv, STK);
 	if(debug) threadcount++;
-	yield();
+	taskyield();
 	return o;
 }
 
@@ -204,7 +213,7 @@ binop(void (*oper)(void*), Ps *f, Ps *g)
 	argv[2] = o;
 	threadcreate(oper, argv, STK);
 	if(debug) threadcount++;
-	yield();
+	taskyield();
 	return o;
 }
 
@@ -226,25 +235,25 @@ _psadd(void *a)
 	s = argv[2];
 
 	alts[REQ].c = s->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[CLOSE].c = s->close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
 	for(;;){
 		switch(alt(alts)){
 		case REQ:
 			r = ratadd(getr(f), getr(g));
-			send(s->dat, &r);
+			chansend(s->dat, &r);
 			break;
 		case CLOSE:
 			psfree(s);
-			send(f->close, nil);
-			send(g->close, nil);
+			chansend(f->close, NULL);
+			chansend(g->close, NULL);
 			if(debug) threadcount--;
-			threadexits(0);
+			taskexit();
 		}
 	}
 }
@@ -273,11 +282,11 @@ _psderiv(void *a)
 	d = argv[1];
 
 	alts[REQ].c = d->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[CLOSE].c = d->close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
 	getr(f);
@@ -286,13 +295,13 @@ _psderiv(void *a)
 		case REQ:
 			r = getr(f);
 			t = ratmk(i * r.num, r.den);
-			send(d->dat, &t);
+			chansend(d->dat, &t);
 			break;
 		case CLOSE:
 			psfree(d);
-			send(f->close, nil);
+			chansend(f->close, NULL);
 			if(debug) threadcount--;
-			threadexits(0);
+			taskexit();
 		}
 	}
 }
@@ -306,7 +315,7 @@ psderiv(Ps *f)
 	argv[1] = d;
 	threadcreate(_psderiv, argv, STK);
 	if(debug) threadcount++;
-	yield();
+	taskyield();
 	return d;
 }
 
@@ -315,10 +324,12 @@ psprint(Ps *ps, int n)
 {
 	int	i;
 
-	for(i = 0; i < n - 1; i++)
-		print("%R ", getr(ps));
-	print("%R\n", getr(ps));
-
+	for(i = 0; i < n - 1; i++){
+		ratprint(getr(ps));
+		printf(", ");
+	}
+	ratprint(getr(ps));
+	printf("\n");
 }
 
 static void
@@ -340,16 +351,16 @@ _psinteg(void *a)
 	i = argv[2];
 
 	alts[REQ].c = i->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[CLOSE].c = i->close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
 	switch(alt(alts)){
 	case REQ:
-		send(i->dat, &c);
+		chansend(i->dat, &c);
 		break;
 	case CLOSE:
 		goto End;
@@ -358,7 +369,7 @@ _psinteg(void *a)
 		switch(alt(alts)){
 		case REQ:
 			out = ratmul(getr(f), ratmk(1, j));
-			send(i->dat, &out);
+			chansend(i->dat, &out);
 			break;
 		case CLOSE:
 			goto End;
@@ -366,9 +377,9 @@ _psinteg(void *a)
 	}
 End:
 	psfree(i);
-	send(f->close, nil);
+	chansend(f->close, NULL);
 	if(debug) threadcount--;
-	threadexits(0);
+	taskexit();
 }
 
 
@@ -383,7 +394,7 @@ psinteg(Ps *ps, Rat c)
 	argv[2] = i;
 	threadcreate(_psinteg, argv, STK);
 	if(debug) threadcount++;
-	yield();
+	taskyield();
 	return i;
 }
 
@@ -405,24 +416,24 @@ _pscmul(void *a)
 	o = argv[2];
 
 	alts[REQ].c = o->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[CLOSE].c = o->close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
 	for(;;){
 		switch(alt(alts)){
 		case REQ:
 			p = ratmul(c, getr(f));
-			send(o->dat, &p);
+			chansend(o->dat, &p);
 			break;
 		case CLOSE:
 			psfree(o);
-			send(f->close, nil);
+			chansend(f->close, NULL);
 			if(debug) threadcount--;
-			threadexits(0);
+			taskexit();
 		}
 	}
 }
@@ -438,7 +449,7 @@ pscmul(Rat c, Ps* f)
 	argv[2] = o;
 	threadcreate(_pscmul, argv, STK);
 	if(debug) threadcount++;
-	yield();
+	taskyield();
 	return o;
 }
 
@@ -462,14 +473,14 @@ _psmul(void *a)
 	p = argv[2];
 
 	alts[REQ].c = p->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[CLOSE].c = p->close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
-	fq.front = gq.front = nil;
+	fq.front = gq.front = NULL;
 	for(;;){
 		switch(alt(alts)){
 		case REQ:
@@ -478,23 +489,23 @@ _psmul(void *a)
 			fnode = fq.front;
 			gnode = gq.front;
 			sum = ratmk(0, 1);
-			while(fnode != nil){
+			while(fnode != NULL){
 				sum = ratadd(sum, ratmul(fnode->val, gnode->val));
 				fnode = fnode->link;
 				gnode = gnode->link;	
 			}
-			send(p->dat, &sum);
+			chansend(p->dat, &sum);
 			break;
 		case CLOSE:
 			psfree(p);
-			while(fq.front != nil)
+			while(fq.front != NULL)
 				delete(&fq);
-			while(gq.front != nil)
+			while(gq.front != NULL)
 				delete(&gq);
-			send(f->close, nil);
-			send(g->close, nil);
+			chansend(f->close, NULL);
+			chansend(g->close, NULL);
 			if(debug) threadcount--;
-			threadexits(0);
+			taskexit();
 		}
 	}
 }
@@ -510,7 +521,7 @@ _psrecip(void *a)
 {
 	void	**argv;
 	Ps	*f, *r, *rr, *recip;
-	Channel	*close;
+	Chan	*close;
 	Rat	g;
 	enum{
 		REQ,
@@ -526,21 +537,21 @@ _psrecip(void *a)
 	close = argv[3];
 
 	alts[REQ].c = r->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[CLOSE].c = close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
 	switch(alt(alts)){
 	case REQ:
 		g = ratrecip(getr(f));
-		send(r->dat, &g);
+		chansend(r->dat, &g);
 		break;
 	case CLOSE:
-		send(rr->close, nil);
-		send(f->close, nil);
+		chansend(rr->close, NULL);
+		chansend(f->close, NULL);
 		goto End;
 	}
 	recip = pscmul(ratneg(g), psmul(f, rr));
@@ -548,18 +559,18 @@ _psrecip(void *a)
 		switch(alt(alts)){
 		case REQ:
 			g = getr(recip);
-			send(r->dat, &g);
+			chansend(r->dat, &g);
 			break;
 		case CLOSE:
-			send(recip->close, nil);
+			chansend(recip->close, NULL);
 			goto End;
 		}
 	}
 End:
-	recv(r->close, nil);
+	chanrecv(r->close, NULL);
 	psfree(r);
 	if(debug) threadcount--;
-	threadexits(0);
+	taskexit();
 }
 
 Ps*
@@ -567,7 +578,7 @@ psrecip(Ps *f)
 {
 	void	*argv[4];
 	Ps	*rr[2], *r = psmk(0);
-	Channel	*close = chancreate(1, 0);
+	Chan	*close = channew(1, 0);
 
 	split(r, rr, close);
 	argv[0] = f;
@@ -576,7 +587,7 @@ psrecip(Ps *f)
 	argv[3] = close;
 	threadcreate(_psrecip, argv, STK);
 	if(debug) threadcount++;
-	yield();
+	taskyield();
 	return rr[1];
 }
 
@@ -601,11 +612,11 @@ _psmsubst(void *a)
 	m = argv[3];
 
 	alts[REQ].c = m->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[CLOSE].c = m->close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
 	zero = ratmk(0, 1);
@@ -613,11 +624,11 @@ _psmsubst(void *a)
 		switch(alt(alts)){
 		case REQ:
 			r = ratmul(getr(f), ratpow(c, i));
-			send(m->dat, &r);
+			chansend(m->dat, &r);
 			for(j = 0; j < deg - 1; j++){
 				switch(alt(alts)){
 				case REQ:
-					send(m->dat, &zero);
+					chansend(m->dat, &zero);
 					break;
 				case CLOSE:
 					goto End;
@@ -630,9 +641,9 @@ _psmsubst(void *a)
 	}
 End:
 	psfree(m);
-	send(f->close, nil);
+	chansend(f->close, NULL);
 	if(debug) threadcount--;
-	threadexits(0);
+	taskexit();
 }
 
 Ps*
@@ -648,7 +659,7 @@ psmsubst(Ps *f, Rat c, int deg)
 	argv[3] = m;
 	threadcreate(_psmsubst, argv, STK);
 	if(debug) threadcount++;
-	yield();
+	taskyield();
 	return m;
 }
 
@@ -672,39 +683,39 @@ _pssubst(void *a)
 	o = argv[2];
 
 	alts[REQ].c = o->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[CLOSE].c = o->close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
 	switch(alt(alts)){
 	case REQ:
 		r = getr(f);
-		send(o->dat, &r);
+		chansend(o->dat, &r);
 		break;
 	case CLOSE:
 		psfree(o);
-		send(f->close, nil);
-		send(g->close, nil);
+		chansend(f->close, NULL);
+		chansend(g->close, NULL);
 		if(debug) threadcount--;
-		threadexits(0);
+		taskexit();
 	}
-	split(g, gg, nil);
+	split(g, gg, NULL);
 	getr(gg[0]);
 	subst = psmul(gg[0], pssubst(f, gg[1]));
 	for(;;){
 		switch(alt(alts)){
 		case REQ:
 			r = getr(subst);
-			send(o->dat, &r);
+			chansend(o->dat, &r);
 			break;
 		case CLOSE:
 			psfree(o);
-			send(subst->close, nil);
+			chansend(subst->close, NULL);
 			if(debug) threadcount--;
-			threadexits(0);
+			taskexit();
 		}
 	}
 }
@@ -720,7 +731,7 @@ _psrev(void *a)
 {
 	void	**argv;
 	Ps	*f, *r, *rr, *rever;
-	Channel	*close;
+	Chan	*close;
 	Rat	g;
 	enum{
 		REQ,
@@ -736,21 +747,21 @@ _psrev(void *a)
 	close = argv[3];
 
 	alts[REQ].c = r->req;
-	alts[REQ].v = nil;
-	alts[REQ].op = CHANRCV;
+	alts[REQ].v = NULL;
+	alts[REQ].op = CHANRECV;
 	alts[CLOSE].c = close;
-	alts[CLOSE].v = nil;
-	alts[CLOSE].op = CHANRCV;
+	alts[CLOSE].v = NULL;
+	alts[CLOSE].op = CHANRECV;
 	alts[NALT].op = CHANEND;
 
 	g = ratmk(0, 1);
 	switch(alt(alts)){
 	case REQ:
-		send(r->dat, &g);
+		chansend(r->dat, &g);
 		break;
 	case CLOSE:
-		send(rr->close, nil);
-		send(f->close, nil);
+		chansend(rr->close, NULL);
+		chansend(f->close, NULL);
 		goto End;
 	}
 	getr(f);
@@ -759,18 +770,18 @@ _psrev(void *a)
 		switch(alt(alts)){
 		case REQ:
 			g = getr(rever);
-			send(r->dat, &g);
+			chansend(r->dat, &g);
 			break;
 		case CLOSE:
-			send(rever->close, nil);
+			chansend(rever->close, NULL);
 			goto End;
 		}
 	}
 End:
-	recv(r->close, nil);
+	chanrecv(r->close, NULL);
 	psfree(r);
 	if(debug) threadcount--;
-	threadexits(0);
+	taskexit();
 }
 
 Ps*
@@ -778,7 +789,7 @@ psrev(Ps *f)
 {
 	void	*argv[4];
 	Ps	*rr[2], *r;
-	Channel	*close = chancreate(1,0);
+	Chan	*close = channew(1,0);
 
 	r = psmk(0);
 	split(r, rr, close);
@@ -788,7 +799,7 @@ psrev(Ps *f)
 	argv[3] = close;
 	threadcreate(_psrev, argv, STK);
 	if(debug) threadcount++;
-	yield();
+	taskyield();
 	return rr[1];
 }
 
@@ -798,76 +809,77 @@ threadmain(int argc, char *argv[])
 	Ps	*ps1, *ps2, *pssum, *ints, *tanx, *pspair[2];
 	Rat	one, zero;
 
-	ratfmtinstall();
+/*	ratfmtinstall();*/
 
+	printf("here");
 	zero = ratmk(0, 1);
 	one = ratmk(1, 1);
 
 	ps1 = mkconst(one);
-	print("1 1 1 1 1 1 1 1 1 1\n");
+	printf("1 1 1 1 1 1 1 1 1 1\n");
 	psprint(ps1, 10);
-	print("\n");
+	printf("\n");
 
 	ps2 = mkconst(one);
 	pssum = psadd(ps1, ps2);
-	print("2 2 2 2 2 2 2 2 2 2\n");
+	printf("2 2 2 2 2 2 2 2 2 2\n");
 	psprint(pssum, 10);
-	print("\n");
-	send(pssum->close, nil);
+	printf("\n");
+	chansend(pssum->close, NULL);
 
 	ps1 = mkconst(one);
 	ints = psderiv(ps1);
-	print("1 2 3 4 5 6 7 8 9 10\n");
+	printf("1 2 3 4 5 6 7 8 9 10\n");
 	psprint(ints, 10);
-	print("\n");
-	send(ints->close, nil);
+	printf("\n");
+	chansend(ints->close, NULL);
 
 	ps1 = mkconst(one);
 	ps2 = psinteg(ps1, one);
-	print("1 1 1/2 1/3 1/4 1/5 1/6 1/7 1/8 1/9\n");
+	printf("1 1 1/2 1/3 1/4 1/5 1/6 1/7 1/8 1/9\n");
 	psprint(ps2, 10);
-	print("\n");
-	send(ps2->close, nil);
+	printf("\n");
+	chansend(ps2->close, NULL);
 
 	ps1 = mkconst(one);
 	ints = psderiv(ps1);
-	split(ints, pspair, nil);
-	print("1 2 3 4 5 6 7 8 9 10\n");
-	print("1 2 3 4 5 6 7 8 9 10\n");
+	split(ints, pspair, NULL);
+	printf("1 2 3 4 5 6 7 8 9 10\n");
+	printf("1 2 3 4 5 6 7 8 9 10\n");
 	psprint(pspair[0], 10);
 	psprint(pspair[1], 10);
-	print("\n");
-	send(pspair[0]->close, nil);
-	send(pspair[1]->close, nil);
+	printf("\n");
+	chansend(pspair[0]->close, NULL);
+	chansend(pspair[1]->close, NULL);
 
 	ps1 = mkconst(one);
 	ps2 = pscmul(ratmk(2, 1), ps1);
-	print("2 2 2 2 2 2 2 2 2 2\n");
+	printf("2 2 2 2 2 2 2 2 2 2\n");
 	psprint(ps2, 10);
-	print("\n");
-	send(ps2->close, nil);
+	printf("\n");
+	chansend(ps2->close, NULL);
 
 	ps1 = mkconst(one);
-	split(ps1, pspair, nil);
+	split(ps1, pspair, NULL);
 	ps2 = psmul(pspair[0], pspair[1]);
-	print("1 2 3 4 5 6 7 8 9 10\n");
+	printf("1 2 3 4 5 6 7 8 9 10\n");
 	psprint(ps2, 10);
-	print("\n");
-	send(ps2->close, nil);
+	printf("\n");
+	chansend(ps2->close, NULL);
 
 	ps1 = mkconst(one);
 	ps2 = psrecip(ps1);
-	print("1 -1 0 0 0 0 0 0 0 0\n");
+	printf("1 -1 0 0 0 0 0 0 0 0\n");
 	psprint(ps2, 10);
-	print("\n");
-	send(ps2->close, nil);
+	printf("\n");
+	chansend(ps2->close, NULL);
 
 	ps1 = mkconst(one);
 	tanx = psrev(psinteg(psmsubst(ps1, ratmk(-1, 1), 2), zero));
-	print("0 1 0 1/3 0 2/15 0 17/315 0 62/2835 0 1382/155925\n");
+	printf("0 1 0 1/3 0 2/15 0 17/315 0 62/2835 0 1382/155925\n");
 	psprint(tanx, 12);
-	print("\n");
-	send(tanx->close, nil);
+	printf("\n");
+	chansend(tanx->close, NULL);
 
-	threadexitsall(0);
+	exit(0);
 }

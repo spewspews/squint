@@ -1,5 +1,5 @@
-#include <u.h>
-#include <libc.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include "rat.h"
 #include "fifo.h"
 
@@ -9,14 +9,14 @@ mkfifo(void)
 	Fifo *q;
 
 	q = malloc(sizeof(*q));
-	q->front = nil;
+	q->front = NULL;
 	return q;
 }
 
 int
 isempty(Fifo *q)
 {
-	return q->front == nil;
+	return q->front == NULL;
 }
 
 void
@@ -25,7 +25,7 @@ frontinsert(Fifo *q, Rat val)
 	Node	*n;
 
 	n = malloc(sizeof(*n));
-	if(q->front == nil)
+	if(q->front == NULL)
 		q->rear = &n->link;
 	n->val = val;
 	n->link = q->front;
@@ -40,8 +40,8 @@ insert(Fifo *q, Rat val)
 
 	n = malloc(sizeof(*n));
 	n->val = val;
-	n->link = nil;
-	if(q->front == nil)
+	n->link = NULL;
+	if(q->front == NULL)
 		q->front = n;
 	else
 		*q->rear = n;

@@ -7,8 +7,8 @@ enum
 int threadcount;
 int verbose;
 
-typedef struct Rat	Rat;
-typedef struct Node	Node;
+typedef struct Rat Rat;
+typedef struct Node Node;
 typedef struct Lifo Lifo;
 
 struct Rat{
@@ -17,15 +17,15 @@ struct Rat{
 };
 
 struct Node{
-	Rat		val;
-	Node	*link;
+	Rat val;
+	Node *link;
 };
 
 struct Lifo{
-	Node	*front;
-	Node	*rear;
+	Node *front;
+	Node *rear;
 };
 
-Lifo	*mklifo(void);
-int		insert(Lifo*, Rat);
-int		delete(Lifo*, Rat*);
+Lifo *mklifo(void);
+int insert(Lifo*, Rat);
+int delete(Lifo*, Rat*);

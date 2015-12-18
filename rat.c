@@ -1,25 +1,27 @@
-#include <u.h>
-#include <libc.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "rat.h"
 
 static int
-gcd(vlong a, vlong b)
+gcd(int64_t a, int64_t b)
 {
-	vlong t;
+	int64_t t;
 
 	while(b != 0){
 		t = b;
 		b = a % b;
 		a = t;
 	}
-	return abs(a);
+	return llabs(a);
 }
 
 Rat
-ratmk(vlong n, vlong d)
+ratmk(int64_t n, int64_t d)
 {
 	Rat		r;
-	vlong	g;
+	int64_t	g;
 
 	g = gcd(n, d);
 	if(d > 0){
@@ -35,7 +37,7 @@ ratmk(vlong n, vlong d)
 Rat
 ratrecip(Rat a)
 {
-	vlong	t;
+	int64_t	t;
 
 	t = a.num;
 	a.num = a.den;
@@ -57,7 +59,7 @@ ratneg(Rat a)
 Rat
 ratadd(Rat a, Rat b)
 {
-	vlong	aden, bden, g;
+	int64_t	aden, bden, g;
 
 	g = gcd(a.den, b.den);
 	aden = a.den / g;
@@ -75,7 +77,7 @@ Rat
 ratmul(Rat r, Rat s)
 {
 	Rat	t;
-	vlong	g, h;
+	int64_t	g, h;
 
 	g = gcd(r.num, s.den);
 	h = gcd(s.num, r.den);
@@ -93,6 +95,16 @@ ratpow(Rat r, int e)
 }
 
 int
+ratprint(Rat r)
+{
+	if(r.den == 1)
+		return printf("%lld", r.num);
+	else
+		return printf("%lld/%lld", r.num, r.den);
+}
+	
+/*
+int
 Rfmt(Fmt *f)
 {
 	Rat r;
@@ -109,3 +121,4 @@ ratfmtinstall(void)
 {
 	fmtinstall('R', Rfmt);
 }
+*/
