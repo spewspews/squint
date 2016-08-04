@@ -1,8 +1,8 @@
 </$objtype/mkfile
 
 TARG=	squint
-OFILES=	squint.$O fifo.$O rat.$O
-HFILES=	fifo.h rat.h
+OFILES=	squint.$O queue.$O rat.$O
+HFILES=	queue.h rat.h
 BIN=	.
 
 </sys/src/cmd/mkone

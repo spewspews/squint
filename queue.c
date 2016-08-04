@@ -1,26 +1,33 @@
 #include <u.h>
 #include <libc.h>
 #include "rat.h"
-#include "fifo.h"
+#include "queue.h"
 
-Fifo*
-mkfifo(void)
+Queue*
+mkqueue(void)
 {
-	Fifo *q;
+	Queue *q;
 
 	q = malloc(sizeof(*q));
-	q->front = nil;
+	queueset(q);
 	return q;
 }
 
+void
+queueset(Queue *q)
+{
+	q->front = nil;
+	q->rear = &q->front;
+}
+
 int
-isempty(Fifo *q)
+isempty(Queue *q)
 {
 	return q->front == nil;
 }
 
 void
-frontinsert(Fifo *q, Rat val)
+frontinsert(Queue *q, Rat val)
 {
 	Node	*n;
 
@@ -34,23 +41,20 @@ frontinsert(Fifo *q, Rat val)
 }
 
 void
-insert(Fifo *q, Rat val)
+insert(Queue *q, Rat val)
 {
 	Node	*n;
 
 	n = malloc(sizeof(*n));
 	n->val = val;
 	n->link = nil;
-	if(q->front == nil)
-		q->front = n;
-	else
-		*q->rear = n;
+	*q->rear = n;
 	q->rear = &n->link;
 	return;
 }
 
 Rat
-delete(Fifo *q)
+delete(Queue *q)
 {
 	Rat	r;
 	Node	*n;
@@ -59,5 +63,7 @@ delete(Fifo *q)
 	r = n->val;
 	q->front = n->link;
 	free(n);
+	if(q->front == nil)
+		q->rear = &q->front;
 	return r;
 }

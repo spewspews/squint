@@ -7,7 +7,7 @@ gcd(vlong a, vlong b)
 {
 	vlong t;
 
-	while(b != 0){
+	while(b != 0) {
 		t = b;
 		b = a % b;
 		a = t;
@@ -22,10 +22,10 @@ ratmk(vlong n, vlong d)
 	vlong	g;
 
 	g = gcd(n, d);
-	if(d > 0){
+	if(d > 0) {
 		r.num = n/g;
 		r.den = d/g;
-	}else{
+	} else {
 		r.num = -n/g;
 		r.den = -d/g;
 	}
@@ -40,7 +40,7 @@ ratrecip(Rat a)
 	t = a.num;
 	a.num = a.den;
 	a.den = t;
-	if(a.den < 0){
+	if(a.den < 0) {
 		a.num = -a.num;
 		a.den = -a.den;
 	}
