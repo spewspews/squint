@@ -37,7 +37,6 @@ frontinsert(Queue *q, Rat val)
 	n->val = val;
 	n->link = q->front;
 	q->front = n;
-	return;
 }
 
 void
@@ -50,7 +49,6 @@ insert(Queue *q, Rat val)
 	n->link = nil;
 	*q->rear = n;
 	q->rear = &n->link;
-	return;
 }
 
 Rat
